@@ -245,7 +245,7 @@ async def generate_single_task(
         return None
 
     task["target_gaps"] = normalized
-    task["gap_pacing_plan"] = _normalize_gap_pacing_plan(task, normalized)
+    task.pop("gap_pacing_plan", None)
     task["primary_gap"] = normalized[0]
 
     logger.info(f"  Task targets gaps: {task['target_gaps']}")

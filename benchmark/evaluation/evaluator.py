@@ -328,7 +328,7 @@ async def evaluate_source_faithfulness_turn(
         "mentioned_gap_ids": mentioned_gap_ids,
         "faithfulness_score": score,
         "rationale": result.get("rationale", ""),
-        "unsupported_claims": result.get("unsupported_claims", []),
+        "contradictions": result.get("contradictions", result.get("unsupported_claims", [])),
         "not_applicable": score is None,
     }
 

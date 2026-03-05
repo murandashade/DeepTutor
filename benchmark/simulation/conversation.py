@@ -699,63 +699,68 @@ async def _run_single_session(
         student_msg, student_action = await agent.respond(tutor_msg)
         print(f"[Student] {student_msg}\n")
         if student_action == "task_complete":
-            print("[System] Student indicated task complete. Requesting practice questions from tutor...")
             tutor_history.append({"role": "user", "content": student_msg})
-            practice_questions: list[str] = []
-            if auto:
-                try:
-                    if auto_backend == "deep_tutor":
-                        topic = (
-                            f"{task_title}\n"
-                            f"Conversation summary request: {TUTOR_POST_COMPLETE_PROMPT}\n"
-                            f"Generate {PRACTICE_QUESTION_COUNT} practice questions aligned to this session."
-                        )
-                        practice_questions = await deep_tutor_generate_practice_questions(
-                            kb_name=kb_name,
-                            workspace=workspace,
-                            topic=topic,
-                            language=deeptutor_language,
-                        )
-                    else:
-                        practice_questions = await mock_tutor_generate_practice_questions(
-                            tutor_history=tutor_history,
-                            kb_name=kb_name,
-                            prior_sessions_summary=prior_sessions_summary,
-                        )
-                except Exception as e:
-                    logger.error("Auto tutor post-complete failed (%s): %s", auto_backend, e)
-                    practice_questions = ["(Practice question generation failed.)"]
-            else:
-                print(f"[Tutor] {TUTOR_POST_COMPLETE_PROMPT}")
-                print("[Tutor] (type 5 practice questions, separate by blank lines, empty line + Enter to send)")
-                lines = []
-                while True:
-                    try:
-                        line = input()
-                    except EOFError:
-                        break
-                    if line == "" and lines:
-                        break
-                    lines.append(line)
-                practice_questions = _split_questions_from_text("\n".join(lines))
-                if not practice_questions:
-                    practice_questions = ["(No practice questions provided.)"]
-
-            if len(practice_questions) > PRACTICE_QUESTION_COUNT:
-                practice_questions = practice_questions[:PRACTICE_QUESTION_COUNT]
-            practice_msg = _format_practice_questions_block(practice_questions)
-            tutor_history.append({"role": "assistant", "content": practice_msg})
-            print(f"[Tutor] {practice_msg}\n")
-            # Append to agent history so it appears in transcript
-            agent.history.append({"role": "user", "content": practice_msg})
-
-            practice_eval = await _evaluate_practice_questions(
-                questions=practice_questions,
-                gaps=entry.get("gaps", []),
-                profile=entry.get("profile", {}),
-            )
-            _print_practice_eval(entry_id, practice_eval)
             break
+
+    # --- Practice question generation (runs after session ends for any reason) ---
+    practice_questions: list[str] = []
+    practice_eval: dict | None = None
+
+    if auto:
+        end_reason = "task_complete" if (student_action if "student_action" in dir() else None) == "task_complete" else "max_turns"
+        print(f"[System] Session ended ({end_reason}). Generating practice questions...")
+        try:
+            if auto_backend == "deep_tutor":
+                topic = (
+                    f"{task_title}\n"
+                    f"Conversation summary request: {TUTOR_POST_COMPLETE_PROMPT}\n"
+                    f"Generate {PRACTICE_QUESTION_COUNT} practice questions aligned to this session."
+                )
+                practice_questions = await deep_tutor_generate_practice_questions(
+                    kb_name=kb_name,
+                    workspace=workspace,
+                    topic=topic,
+                    language=deeptutor_language,
+                )
+            else:
+                practice_questions = await mock_tutor_generate_practice_questions(
+                    tutor_history=tutor_history,
+                    kb_name=kb_name,
+                    prior_sessions_summary=prior_sessions_summary,
+                )
+        except Exception as e:
+            logger.error("Auto tutor post-complete failed (%s): %s", auto_backend, e)
+            practice_questions = ["(Practice question generation failed.)"]
+    elif not auto and tutor_history:
+        print(f"[Tutor] {TUTOR_POST_COMPLETE_PROMPT}")
+        print("[Tutor] (type 5 practice questions, separate by blank lines, empty line + Enter to send)")
+        lines = []
+        while True:
+            try:
+                line = input()
+            except EOFError:
+                break
+            if line == "" and lines:
+                break
+            lines.append(line)
+        practice_questions = _split_questions_from_text("\n".join(lines))
+        if not practice_questions:
+            practice_questions = ["(No practice questions provided.)"]
+
+    if practice_questions:
+        if len(practice_questions) > PRACTICE_QUESTION_COUNT:
+            practice_questions = practice_questions[:PRACTICE_QUESTION_COUNT]
+        practice_msg = _format_practice_questions_block(practice_questions)
+        tutor_history.append({"role": "assistant", "content": practice_msg})
+        print(f"[Tutor] {practice_msg}\n")
+        agent.history.append({"role": "user", "content": practice_msg})
+
+        practice_eval = await _evaluate_practice_questions(
+            questions=practice_questions,
+            gaps=entry.get("gaps", []),
+            profile=entry.get("profile", {}),
+        )
+        _print_practice_eval(entry_id, practice_eval)
 
     transcript = agent.get_transcript()
     return {
@@ -763,8 +768,8 @@ async def _run_single_session(
         "transcript": transcript,
         "entry": entry,
         "actual_turns": agent.turn_count,
-        "practice_questions": practice_questions if "practice_questions" in locals() else [],
-        "practice_eval": practice_eval if "practice_eval" in locals() else None,
+        "practice_questions": practice_questions,
+        "practice_eval": practice_eval,
     }
 
 
@@ -892,60 +897,66 @@ async def run_conversation(
         student_msg, student_action = await agent.respond(tutor_msg)
         print(f"[Student] {student_msg}\n")
         if student_action == "task_complete":
-            print("[System] Student indicated task complete. Requesting practice questions from tutor...")
             tutor_history.append({"role": "user", "content": student_msg})
-            practice_questions: list[str] = []
-            if auto:
-                try:
-                    if auto_backend == "deep_tutor":
-                        topic = (
-                            f"{task_title}\n"
-                            f"Conversation summary request: {TUTOR_POST_COMPLETE_PROMPT}\n"
-                            f"Generate {PRACTICE_QUESTION_COUNT} practice questions aligned to this session."
-                        )
-                        practice_questions = await deep_tutor_generate_practice_questions(
-                            kb_name=kb_name,
-                            workspace=workspace,
-                            topic=topic,
-                            language=deeptutor_language,
-                        )
-                    else:
-                        practice_questions = await mock_tutor_generate_practice_questions(
-                            tutor_history=tutor_history,
-                            kb_name=kb_name,
-                            prior_sessions_summary=None,
-                        )
-                except Exception as e:
-                    logger.error("Auto tutor post-complete failed (%s): %s", auto_backend, e)
-                    practice_questions = ["(Practice question generation failed.)"]
-            else:
-                print(f"[Tutor] {TUTOR_POST_COMPLETE_PROMPT}")
-                print("[Tutor] (type 5 practice questions, separate by blank lines, empty line + Enter to send)")
-                lines = []
-                while True:
-                    try:
-                        line = input()
-                    except EOFError:
-                        break
-                    if line == "" and lines:
-                        break
-                    lines.append(line)
-                practice_questions = _split_questions_from_text("\n".join(lines))
-                if not practice_questions:
-                    practice_questions = ["(No practice questions provided.)"]
-
-            if len(practice_questions) > PRACTICE_QUESTION_COUNT:
-                practice_questions = practice_questions[:PRACTICE_QUESTION_COUNT]
-            practice_msg = _format_practice_questions_block(practice_questions)
-            print(f"[Tutor] {practice_msg}\n")
-            agent.history.append({"role": "user", "content": practice_msg})
-            practice_eval = await _evaluate_practice_questions(
-                questions=practice_questions,
-                gaps=entry.get("gaps", []),
-                profile=entry.get("profile", {}),
-            )
-            _print_practice_eval(entry_id, practice_eval)
             break
+
+    # --- Practice question generation (runs after session ends for any reason) ---
+    practice_questions: list[str] = []
+    practice_eval: dict | None = None
+
+    if auto and tutor_history:
+        end_reason = "task_complete" if (student_action if "student_action" in dir() else None) == "task_complete" else "max_turns"
+        print(f"[System] Session ended ({end_reason}). Generating practice questions...")
+        try:
+            if auto_backend == "deep_tutor":
+                topic = (
+                    f"{task_title}\n"
+                    f"Conversation summary request: {TUTOR_POST_COMPLETE_PROMPT}\n"
+                    f"Generate {PRACTICE_QUESTION_COUNT} practice questions aligned to this session."
+                )
+                practice_questions = await deep_tutor_generate_practice_questions(
+                    kb_name=kb_name,
+                    workspace=workspace,
+                    topic=topic,
+                    language=deeptutor_language,
+                )
+            else:
+                practice_questions = await mock_tutor_generate_practice_questions(
+                    tutor_history=tutor_history,
+                    kb_name=kb_name,
+                    prior_sessions_summary=None,
+                )
+        except Exception as e:
+            logger.error("Auto tutor post-complete failed (%s): %s", auto_backend, e)
+            practice_questions = ["(Practice question generation failed.)"]
+    elif not auto and tutor_history:
+        print(f"[Tutor] {TUTOR_POST_COMPLETE_PROMPT}")
+        print("[Tutor] (type 5 practice questions, separate by blank lines, empty line + Enter to send)")
+        lines = []
+        while True:
+            try:
+                line = input()
+            except EOFError:
+                break
+            if line == "" and lines:
+                break
+            lines.append(line)
+        practice_questions = _split_questions_from_text("\n".join(lines))
+        if not practice_questions:
+            practice_questions = ["(No practice questions provided.)"]
+
+    if practice_questions:
+        if len(practice_questions) > PRACTICE_QUESTION_COUNT:
+            practice_questions = practice_questions[:PRACTICE_QUESTION_COUNT]
+        practice_msg = _format_practice_questions_block(practice_questions)
+        print(f"[Tutor] {practice_msg}\n")
+        agent.history.append({"role": "user", "content": practice_msg})
+        practice_eval = await _evaluate_practice_questions(
+            questions=practice_questions,
+            gaps=entry.get("gaps", []),
+            profile=entry.get("profile", {}),
+        )
+        _print_practice_eval(entry_id, practice_eval)
 
     print(f"{'='*60}")
     print(f"Conversation complete. {agent.turn_count} student turns.")
@@ -960,8 +971,8 @@ async def run_conversation(
         "actual_turns": agent.turn_count,
         "transcript": agent.get_transcript(),
         "entry": entry,
-        "practice_questions": practice_questions if "practice_questions" in locals() else [],
-        "practice_eval": practice_eval if "practice_eval" in locals() else None,
+        "practice_questions": practice_questions,
+        "practice_eval": practice_eval,
     }
 
     # Save transcript
