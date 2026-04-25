@@ -61,12 +61,13 @@ def render_sidebar():
         st.markdown("---")
         st.subheader("Settings")
 
-        # Model selection
+        # Model selection - defaulting to gpt-4o since I find it gives
+        # noticeably better explanations for technical papers
         model_options = ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-3.5-turbo"]
         selected_model = st.selectbox(
             "Select LLM Model",
             options=model_options,
-            index=1,
+            index=0,
             help="Choose the language model for tutoring.",
         )
         st.session_state["selected_model"] = selected_model
@@ -96,42 +97,4 @@ def render_chat_interface():
             2. **Ask questions** about the document content
             3. **Learn** with AI-powered explanations and tutoring
             """
-        )
-        return
-
-    # Display chat messages
-    for message in st.session_state.messages:
-        with st.chat_message(message["role"]):
-            st.markdown(message["content"])
-
-    # Chat input
-    if prompt := st.chat_input("Ask a question about your document..."):
-        # Add user message to history
-        st.session_state.messages.append({"role": "user", "content": prompt})
-        with st.chat_message("user"):
-            st.markdown(prompt)
-
-        # Generate assistant response
-        with st.chat_message("assistant"):
-            with st.spinner("Thinking..."):
-                # Placeholder response until pipeline is connected
-                response = (
-                    "I'm processing your question about the document. "
-                    "The full RAG pipeline will be connected soon!"
-                )
-                st.markdown(response)
-                st.session_state.messages.append(
-                    {"role": "assistant", "content": response}
-                )
-
-
-def main():
-    """Main application entry point."""
-    logger.info("Starting DeepTutor application")
-    initialize_session_state()
-    render_sidebar()
-    render_chat_interface()
-
-
-if __name__ == "__main__":
-    main()
+  
